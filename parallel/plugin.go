@@ -2,6 +2,9 @@
 package parallel
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/ozontech/testo"
 	"github.com/ozontech/testo/testoplugin"
 	"github.com/ozontech/testo/testoreflect"
@@ -13,12 +16,19 @@ var _ testoplugin.Plugin = (*PluginParallel)(nil)
 type PluginParallel struct {
 	*testo.T
 
-	sync bool
+	sync  bool
+	scope Scope
 }
 
+var parallelTests sync.Map
+
 // Plugin implements [testoplugin.Plugin].
-func (p *PluginParallel) Plugin(_ testoplugin.Plugin, options ...testoplugin.Option) testoplugin.Spec {
+func (p *PluginParallel) Plugin(
+	_ testoplugin.Plugin,
+	options ...testoplugin.Option,
+) testoplugin.Spec {
 	p.sync = *flagSync
+	p.scope = SuiteTests
 
 	for _, opt := range options {
 		if o, ok := opt.Value.(option); ok {
@@ -27,19 +37,7 @@ func (p *PluginParallel) Plugin(_ testoplugin.Plugin, options ...testoplugin.Opt
 	}
 
 	return testoplugin.Spec{
-		Hooks: testoplugin.Hooks{
-			BeforeEach: testoplugin.Hook{
-				Func: func() {
-					if p.sync {
-						return
-					}
-
-					r := testo.Reflect(p)
-
-					r.TestingT.Parallel()
-				},
-			},
-		},
+		Hooks: p.hooks(),
 		Overrides: testoplugin.Overrides{
 			Parallel: func(f testoplugin.FuncParallel) testoplugin.FuncParallel {
 				return func() {
@@ -55,4 +53,76 @@ func (p *PluginParallel) Plugin(_ testoplugin.Plugin, options ...testoplugin.Opt
 			},
 		},
 	}
+}
+
+func (p *PluginParallel) hooks() testoplugin.Hooks {
+	return testoplugin.Hooks{
+		BeforeAll: testoplugin.Hook{
+			Func: func() {
+				if p.sync {
+					return
+				}
+
+				if p.scope.has(Suites) {
+					p.rawParallel()
+				}
+
+				if !p.scope.has(Tests) {
+					return
+				}
+
+				t := p.root()
+
+				if _, ok := parallelTests.LoadOrStore(t.Name(), struct{}{}); ok {
+					return
+				}
+
+				defer func() {
+					r := recover()
+					if r == nil {
+						return
+					}
+
+					if fmt.Sprint(r) == "testing: t.Parallel called multiple times" {
+						return
+					}
+
+					panic(r)
+				}()
+
+				t.Parallel()
+			},
+		},
+		BeforeEach: testoplugin.Hook{
+			Func: func() {
+				if p.sync {
+					return
+				}
+
+				if !p.scope.has(SuiteTests) {
+					return
+				}
+
+				p.rawParallel()
+			},
+		},
+	}
+}
+
+func (p *PluginParallel) rawParallel() {
+	p.Helper()
+
+	testo.Reflect(p).TestingT.Parallel()
+}
+
+func (p *PluginParallel) root() testoreflect.TestingT {
+	s := testo.Reflect(p).Suite
+
+	root := &s
+
+	for root.Parent != nil {
+		root = root.Parent
+	}
+
+	return root.TestingT
 }
