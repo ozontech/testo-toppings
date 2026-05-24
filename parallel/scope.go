@@ -8,7 +8,7 @@ type Scope uint8
 //
 //	const All = SuiteTests | Suites | Tests
 const (
-	// SuiteTests covers suite tests.
+	// SuiteTests is a [Scope] that covers suite tests.
 	//
 	// For example:
 	//
@@ -20,7 +20,7 @@ const (
 	// This is a default value.
 	SuiteTests Scope = 1 << iota
 
-	// Suites covers suites but not their tests.
+	// Suites is a [Scope] that covers suites but not their tests.
 	//
 	// For example:
 	//
@@ -32,7 +32,7 @@ const (
 	// Both of these suites will be run in parallel.
 	Suites
 
-	// Tests covers native tests.
+	// Tests is a [Scope] that covers native tests.
 	//
 	// For example:
 	//
