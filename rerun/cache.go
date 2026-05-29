@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	keyPrefix      = "rerun-"
-	keyTestPrefix  = keyPrefix + "test-"
-	keySuitePrefix = keyPrefix + "suite-"
+	keySep         = "-"
+	keyPrefix      = "rerun" + keySep
+	keyTestPrefix  = keyPrefix + "test" + keySep
+	keySuitePrefix = keyPrefix + "suite" + keySep
 )
 
 func newCache() cache {
@@ -91,7 +92,7 @@ func (t test) Cache() error {
 		return err
 	}
 
-	return testocache.Set(keyTestPrefix+t.Name, marshalled)
+	return testocache.Set(keyTestPrefix+normalize(t.Name), marshalled)
 }
 
 // suite is a cached suite.
@@ -106,5 +107,9 @@ func (s suite) Cache() error {
 		return err
 	}
 
-	return testocache.Set(keySuitePrefix+s.Name, marshalled)
+	return testocache.Set(keySuitePrefix+normalize(s.Name), marshalled)
+}
+
+func normalize(s string) string {
+	return strings.ReplaceAll(s, "/", keySep)
 }
