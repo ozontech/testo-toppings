@@ -3,6 +3,7 @@ package rerun
 
 import (
 	"flag"
+	"path"
 	"sync"
 
 	"github.com/ozontech/testo"
@@ -84,10 +85,18 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 			suite := testo.Reflect(pr).Suite
 
 			if !c.Suites[suite.Caller+keySep+suite.Name].Failed {
-				pr.Skipf(
-					"rerun: there are no known test failures for suite %q, skipping",
-					suite.Name,
-				)
+				// inside a suiteless test
+				if suite.Name == "" {
+					pr.Skipf(
+						"rerun: there is no known test failure for test %q, skipping",
+						path.Base(suite.Caller),
+					)
+				} else {
+					pr.Skipf(
+						"rerun: there are no known test failures for suite %q, skipping",
+						suite.Name,
+					)
+				}
 			}
 		},
 	}
