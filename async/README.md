@@ -52,7 +52,7 @@ t.Go(func() { ... }) // test will wait for this goroutine to finish in the end.
 
 ## Difference from parallel tests
 
-When you call `t.Parallel()` it pauses current test until all other synchronous tests are completed.
+When you call [`t.Parallel()`] it pauses current test until all other synchronous tests are completed.
 Sometimes it might be a problem.
 
 For example, when testing a concurrent component where you need to run several operations
@@ -94,3 +94,4 @@ func Test(t *testing.T) {
 > `async.Run` is just a syntax sugar over calling `testo.Run` inside `t.Go`.
 
 [`sync.WaitGroup`]: https://pkg.go.dev/sync#WaitGroup
+[`t.Parallel`]: https://pkg.go.dev/github.com/ozontech/testo#T.Parallel

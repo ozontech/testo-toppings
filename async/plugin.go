@@ -67,6 +67,13 @@ func (pa *PluginAsync) Wait() {
 // Use [PluginAsync.Wait] to manually await all running goroutines.
 //
 // The function f must not panic.
+//
+// See also [Run].
+//
+// # Fatal and FailNow
+//
+// Calling [testo.T.Fatal] or [testo.T.FailNow] inside this
+// function won't stop the execution of the outer goroutine.
 func (pa *PluginAsync) Go(f func()) {
 	if pa.sem != nil {
 		pa.sem <- struct{}{}
@@ -125,7 +132,7 @@ func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
 //
 // # Difference from parallel tests
 //
-// When you call `t.Parallel()` it pauses current test until all other synchronous tests are completed.
+// When you call [testo.T.Parallel] it pauses current test until all other synchronous tests are completed.
 // Sometimes it might be a problem.
 //
 // For example, when testing a concurrent component where you need to run several operations
