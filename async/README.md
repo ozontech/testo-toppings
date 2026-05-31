@@ -1,6 +1,6 @@
 # 🕰️ Async
 
-Provides a test‑aware [`sync.WaitGroup`].
+Provides a test‑aware [`sync.WaitGroup`] with configurable goroutine limits.
 
 ## Quick Start
 

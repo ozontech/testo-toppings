@@ -27,24 +27,27 @@ type CommonT interface {
 type PluginAsync struct {
 	*testo.T
 
-	wg sync.WaitGroup
+	wg  sync.WaitGroup
+	sem chan struct{}
 }
 
 // Plugin implements [testoplugin.Plugin].
-func (wg *PluginAsync) Plugin(testoplugin.Plugin, ...testoplugin.Option) testoplugin.Spec {
+func (pa *PluginAsync) Plugin(
+	_ testoplugin.Plugin,
+	options ...testoplugin.Option,
+) testoplugin.Spec {
+	for _, opt := range options {
+		if o, ok := opt.Value.(option); ok {
+			o(pa)
+		}
+	}
+
 	return testoplugin.Spec{
 		Hooks: testoplugin.Hooks{
-			AfterAll:     wg.after(),
-			AfterEach:    wg.after(),
-			AfterEachSub: wg.after(),
+			AfterAll:     pa.after(),
+			AfterEach:    pa.after(),
+			AfterEachSub: pa.after(),
 		},
-	}
-}
-
-func (wg *PluginAsync) after() testoplugin.Hook {
-	return testoplugin.Hook{
-		Priority: testoplugin.TryFirst,
-		Func:     wg.Wait,
 	}
 }
 
@@ -53,8 +56,8 @@ func (wg *PluginAsync) after() testoplugin.Hook {
 //
 // Note, that calling this function is optional, as it will be called
 // by the plugin after the current test or sub-test ends.
-func (wg *PluginAsync) Wait() {
-	wg.wg.Wait()
+func (pa *PluginAsync) Wait() {
+	pa.wg.Wait()
 }
 
 // Go calls f in a new goroutine and adds that task to the [sync.WaitGroup].
@@ -64,13 +67,15 @@ func (wg *PluginAsync) Wait() {
 // Use [PluginAsync.Wait] to manually await all running goroutines.
 //
 // The function f must not panic.
-func (wg *PluginAsync) Go(f func()) {
-	// TODO(metafates): use [sync.WaitGroup.Go] once available.
+func (pa *PluginAsync) Go(f func()) {
+	if pa.sem != nil {
+		pa.sem <- struct{}{}
+	}
 
-	wg.wg.Add(1)
+	pa.wg.Add(1)
 
 	go func() {
-		wg.Helper()
+		pa.Helper()
 
 		defer func() {
 			if x := recover(); x != nil {
@@ -87,21 +92,75 @@ func (wg *PluginAsync) Go(f func()) {
 				panic(x)
 			}
 
-			wg.wg.Done()
+			pa.done()
 		}()
 
 		f()
 	}()
 }
 
-func (wg *PluginAsync) unwrapWaitGroup() *PluginAsync {
-	return wg
+func (pa *PluginAsync) done() {
+	if pa.sem != nil {
+		<-pa.sem
+	}
+
+	pa.wg.Done()
+}
+
+func (pa *PluginAsync) after() testoplugin.Hook {
+	return testoplugin.Hook{
+		Priority: testoplugin.TryFirst,
+		Func:     pa.Wait,
+	}
+}
+
+func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
+	return pa
 }
 
 // Run calls [testo.Run] inside [PluginAsync.Go] and returns immediately.
 //
 // All tasks are awaited before test completion with [sync.WaitGroup.Wait].
 // Use [PluginAsync.Wait] to manually await all running goroutines.
+//
+// # Difference from parallel tests
+//
+// When you call `t.Parallel()` it pauses current test until all other synchronous tests are completed.
+// Sometimes it might be a problem.
+//
+// For example, when testing a concurrent component where you need to run several operations
+// at the same time, then check its state inside the same test function:
+//
+//	type T struct{
+//		*testo.T
+//		*async.PluginAsync
+//	}
+//
+//	func Test(t *testing.T) {
+//		testo.RunTest(t, func(t T) {
+//			const workers = 10
+//			const incs = 100
+//
+//			var counter Counter
+//
+//			for i := range workers {
+//				async.Run(t, fmt.Sprintf("worker %d", i), func(t T) {
+//					for range incs {
+//						counter.Inc()
+//					}
+//				})
+//			}
+//
+//			t.Wait()
+//
+//			want := workers * incs
+//			got := counter.Value()
+//
+//			if want != got {
+//				t.Fatalf("counter = %d, want %d", got, want)
+//			}
+//		})
+//	}
 func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option) {
 	t.unwrapWaitGroup().Go(func() {
 		t.Helper()
