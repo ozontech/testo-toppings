@@ -48,7 +48,7 @@ func (wg *PluginAsync) after() testoplugin.Hook {
 	}
 }
 
-// Wait blocks until all functions started from [PluginAsync]
+// Wait blocks until all functions started from [PluginAsync.Go] (including [Run])
 // are finished.
 //
 // Note, that calling this function is optional, as it will be called
