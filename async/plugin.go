@@ -1,5 +1,5 @@
-// Package waitgroup provides a test‑aware [sync.WaitGroup].
-package waitgroup
+// Package async provides a test‑aware [sync.WaitGroup].
+package async
 
 import (
 	"sync"
@@ -9,29 +9,29 @@ import (
 )
 
 var (
-	_ CommonT            = (*PluginWaitGroup)(nil)
-	_ testoplugin.Plugin = (*PluginWaitGroup)(nil)
+	_ CommonT            = (*PluginAsync)(nil)
+	_ testoplugin.Plugin = (*PluginAsync)(nil)
 )
 
-// CommonT is an interface common for all Ts with [PluginWaitGroup] installed.
+// CommonT is an interface common for all Ts with [PluginAsync] installed.
 type CommonT interface {
 	testo.CommonT
 
 	Go(f func())
 	Wait()
 
-	unwrapWaitGroup() *PluginWaitGroup
+	unwrapWaitGroup() *PluginAsync
 }
 
-// PluginWaitGroup simplifies goroutine spawning in tests.
-type PluginWaitGroup struct {
+// PluginAsync simplifies goroutine spawning in tests.
+type PluginAsync struct {
 	*testo.T
 
 	wg sync.WaitGroup
 }
 
 // Plugin implements [testoplugin.Plugin].
-func (wg *PluginWaitGroup) Plugin(testoplugin.Plugin, ...testoplugin.Option) testoplugin.Spec {
+func (wg *PluginAsync) Plugin(testoplugin.Plugin, ...testoplugin.Option) testoplugin.Spec {
 	return testoplugin.Spec{
 		Hooks: testoplugin.Hooks{
 			AfterAll:     wg.after(),
@@ -41,19 +41,19 @@ func (wg *PluginWaitGroup) Plugin(testoplugin.Plugin, ...testoplugin.Option) tes
 	}
 }
 
-func (wg *PluginWaitGroup) after() testoplugin.Hook {
+func (wg *PluginAsync) after() testoplugin.Hook {
 	return testoplugin.Hook{
 		Priority: testoplugin.TryFirst,
 		Func:     wg.Wait,
 	}
 }
 
-// Wait blocks until all functions started from [PluginWaitGroup]
+// Wait blocks until all functions started from [PluginAsync]
 // are finished.
 //
 // Note, that calling this function is optional, as it will be called
 // by the plugin after the current test or sub-test ends.
-func (wg *PluginWaitGroup) Wait() {
+func (wg *PluginAsync) Wait() {
 	wg.wg.Wait()
 }
 
@@ -61,10 +61,10 @@ func (wg *PluginWaitGroup) Wait() {
 // When f returns, the task is removed from the WaitGroup.
 //
 // All tasks are awaited before test completion with [sync.WaitGroup.Wait].
-// Use [PluginWaitGroup.Wait] to manually await all running goroutines.
+// Use [PluginAsync.Wait] to manually await all running goroutines.
 //
 // The function f must not panic.
-func (wg *PluginWaitGroup) Go(f func()) {
+func (wg *PluginAsync) Go(f func()) {
 	// TODO(metafates): use [sync.WaitGroup.Go] once available.
 
 	wg.wg.Add(1)
@@ -94,14 +94,14 @@ func (wg *PluginWaitGroup) Go(f func()) {
 	}()
 }
 
-func (wg *PluginWaitGroup) unwrapWaitGroup() *PluginWaitGroup {
+func (wg *PluginAsync) unwrapWaitGroup() *PluginAsync {
 	return wg
 }
 
-// Run calls [testo.Run] inside [PluginWaitGroup.Go] and returns immediately.
+// Run calls [testo.Run] inside [PluginAsync.Go] and returns immediately.
 //
 // All tasks are awaited before test completion with [sync.WaitGroup.Wait].
-// Use [PluginWaitGroup.Wait] to manually await all running goroutines.
+// Use [PluginAsync.Wait] to manually await all running goroutines.
 func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option) {
 	t.unwrapWaitGroup().Go(func() {
 		t.Helper()
