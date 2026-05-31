@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ozontech/testo"
 	"github.com/ozontech/testo-toppings/async"
@@ -35,6 +36,8 @@ func Test(t *testing.T) {
 
 		for i := range workers {
 			async.Run(t, fmt.Sprintf("worker %d", i), func(t T) {
+				time.Sleep(time.Second)
+
 				for range incs {
 					counter.Inc()
 				}
@@ -49,5 +52,5 @@ func Test(t *testing.T) {
 		if want != got {
 			t.Fatalf("counter = %d, want %d", got, want)
 		}
-	})
+	}, async.WithLimit(9))
 }
