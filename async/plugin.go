@@ -65,6 +65,22 @@ func (pa *PluginAsync) Plugin(
 	}
 }
 
+// Wait blocks until all tests started from [Run] are finished.
+// If at least one test called [testo.T.FailNow] inside [Run],
+// Wait will propagate it.
+//
+// Note, that calling this function is optional, as it will be called
+// by the plugin after the current test or sub-test ends.
+func (pa *PluginAsync) Wait() {
+	pa.Helper()
+
+	pa.wg.Wait()
+
+	if pa.childCalledFailNow.Load() && pa.propagatedFailNow.CompareAndSwap(false, true) {
+		pa.Fatalf("async: goroutine called FailNow")
+	}
+}
+
 func (pa *PluginAsync) overrides() testoplugin.Overrides {
 	return testoplugin.Overrides{
 		FailNow: func(f testoplugin.FuncFailNow) testoplugin.FuncFailNow {
@@ -92,22 +108,6 @@ func (pa *PluginAsync) overrides() testoplugin.Overrides {
 	}
 }
 
-// Wait blocks until all tests started from [Run] are finished.
-// If at least one test called [testo.T.FailNow] inside [Run],
-// Wait will propagate it.
-//
-// Note, that calling this function is optional, as it will be called
-// by the plugin after the current test or sub-test ends.
-func (pa *PluginAsync) Wait() {
-	pa.Helper()
-
-	pa.wg.Wait()
-
-	if pa.childCalledFailNow.Load() && pa.propagatedFailNow.CompareAndSwap(false, true) {
-		pa.Fatalf("async: goroutine called FailNow")
-	}
-}
-
 // Go calls f in a new goroutine and adds that task to the [sync.WaitGroup].
 // When f returns, the task is removed from the WaitGroup.
 //
@@ -122,7 +122,7 @@ func (pa *PluginAsync) Wait() {
 //
 // Calling [testo.T.Fatal] or [testo.T.FailNow] inside this
 // function won't stop the execution of the outer goroutine.
-func (pa *PluginAsync) go_(f func()) {
+func (pa *PluginAsync) wgGo(f func()) {
 	pa.Helper()
 
 	if pa.sem != nil {
@@ -239,7 +239,7 @@ func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option
 		}),
 	)
 
-	unwrap.go_(func() {
+	unwrap.wgGo(func() {
 		t.Helper()
 
 		testo.Run(t, name, f, options...)
