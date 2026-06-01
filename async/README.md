@@ -16,8 +16,8 @@ type T struct{
 
 func Test(t *testing.T) {
 	testo.RunTest(t, func(t T) {
-		t.Go(func() { t.Log("hello from goroutine") })
-		t.Go(func() { t.Log("hello from other") })
+		async.Run(t, "foo", func(t T) { t.Log("hello from goroutine") })
+		async.Run(t, "bar", func(t T) { t.Log("hello from other") })
 
 		t.Wait() // optional, will be called by the plugin after test completion
 
@@ -28,31 +28,33 @@ func Test(t *testing.T) {
 
 ## How it works
 
-It creates a [`sync.WaitGroup`] for each test (and sub-test) and provides a `T.Go(f func())`
-method for `T`.
+It creates a [`sync.WaitGroup`] for each test (and sub-test) and provides a `Run` function to run sub-tests in independent goroutines.
 
-Wait group is awaited through `.Wait()` in `AfterAll` hook by the plugin itself.
-But it's also possible to call (potentially multiple times) a `T.Wait()` method to wait for
+Wait group is awaited through `Wait` in `AfterAll` hook by the plugin itself.
+If at least one test called [`t.FailNow`] inside `Run`, `Wait` will propagate it.
+
+It's also possible to call (potentially multiple times) a `Wait` method to wait for
 current goroutines to finish:
 
 ```go
-t.Go(func() { ... })
-t.Go(func() { ... })
-t.Go(func() { ... })
+async.Run(t, "a", func(t T) { ... })
+async.Run(t, "b", func(t T) { ... })
+async.Run(t, "c", func(t T) { ... })
 
 t.Wait() // wait for these ^3 goroutines to finish
 
-t.Go(func() { ... })
-t.Go(func() { ... })
+async.Run(t, "a", func(t T) { ... })
+async.Run(t, "b", func(t T) { ... })
 
 t.Wait() // wait for these ^2 goroutines to finish
 
-t.Go(func() { ... }) // test will wait for this goroutine to finish in the end.
+// test will wait for this goroutine to finish in the end.
+async.Run(t, "a", func(t T) { ... }) 
 ```
 
 ## Difference from parallel tests
 
-When you call [`t.Parallel()`] it pauses current test until all other synchronous tests are completed.
+When you call [`t.Parallel`] it pauses current test until all other synchronous tests are completed.
 Sometimes it might be a problem.
 
 For example, when testing a concurrent component where you need to run several operations
@@ -91,7 +93,6 @@ func Test(t *testing.T) {
 }
 ```
 
-> `async.Run` is just a syntax sugar over calling `testo.Run` inside `t.Go`.
-
 [`sync.WaitGroup`]: https://pkg.go.dev/sync#WaitGroup
 [`t.Parallel`]: https://pkg.go.dev/github.com/ozontech/testo#T.Parallel
+[`t.FailNow`]: https://pkg.go.dev/github.com/ozontech/testo#T.FailNow
