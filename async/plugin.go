@@ -2,7 +2,9 @@
 package async
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ozontech/testo"
 	"github.com/ozontech/testo/testoplugin"
@@ -17,7 +19,6 @@ var (
 type CommonT interface {
 	testo.CommonT
 
-	Go(f func())
 	Wait()
 
 	unwrapWaitGroup() *PluginAsync
@@ -29,6 +30,16 @@ type PluginAsync struct {
 
 	wg  sync.WaitGroup
 	sem chan struct{}
+
+	parentCtx context.Context
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	childCalledFailNow atomic.Bool
+	propagatedFailNow  atomic.Bool
+
+	onFailNow func()
 }
 
 // Plugin implements [testoplugin.Plugin].
@@ -36,6 +47,8 @@ func (pa *PluginAsync) Plugin(
 	_ testoplugin.Plugin,
 	options ...testoplugin.Option,
 ) testoplugin.Spec {
+	pa.ctx, pa.cancel = context.WithCancel(pa.Context())
+
 	for _, opt := range options {
 		if o, ok := opt.Value.(option); ok {
 			o(pa)
@@ -48,16 +61,51 @@ func (pa *PluginAsync) Plugin(
 			AfterEach:    pa.after(),
 			AfterEachSub: pa.after(),
 		},
+		Overrides: pa.overrides(),
 	}
 }
 
-// Wait blocks until all functions started from [PluginAsync.Go] (including [Run])
-// are finished.
+func (pa *PluginAsync) overrides() testoplugin.Overrides {
+	return testoplugin.Overrides{
+		FailNow: func(f testoplugin.FuncFailNow) testoplugin.FuncFailNow {
+			if pa.onFailNow == nil {
+				return f
+			}
+
+			return func() {
+				pa.Helper()
+
+				defer pa.onFailNow()
+
+				f()
+			}
+		},
+		Context: func(f testoplugin.FuncContext) testoplugin.FuncContext {
+			if pa.parentCtx == nil {
+				return f
+			}
+
+			return func() context.Context {
+				return joinCtx(f(), pa.parentCtx)
+			}
+		},
+	}
+}
+
+// Wait blocks until all tests started from [Run] are finished.
+// If at least one test called [testo.T.FailNow] inside [Run],
+// Wait will propagate it.
 //
 // Note, that calling this function is optional, as it will be called
 // by the plugin after the current test or sub-test ends.
 func (pa *PluginAsync) Wait() {
+	pa.Helper()
+
 	pa.wg.Wait()
+
+	if pa.childCalledFailNow.Load() && pa.propagatedFailNow.CompareAndSwap(false, true) {
+		pa.Fatalf("async: one of the goroutines called FailNow")
+	}
 }
 
 // Go calls f in a new goroutine and adds that task to the [sync.WaitGroup].
@@ -74,7 +122,9 @@ func (pa *PluginAsync) Wait() {
 //
 // Calling [testo.T.Fatal] or [testo.T.FailNow] inside this
 // function won't stop the execution of the outer goroutine.
-func (pa *PluginAsync) Go(f func()) {
+func (pa *PluginAsync) go_(f func()) {
+	pa.Helper()
+
 	if pa.sem != nil {
 		pa.sem <- struct{}{}
 	}
@@ -125,10 +175,17 @@ func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
 	return pa
 }
 
-// Run calls [testo.Run] inside [PluginAsync.Go] and returns immediately.
+// Run calls [testo.Run] inside independent goroutine and returns immediately.
+//
+// Inside [Run], [testo.T.Context] is cancelled as soon as at least one
+// neighbor test inside [Run] calls to [testo.T.FailNow].
+//
+//	async.Run(t, "foo", func(t T) { t.FailNow() })
+//	async.Run(t, "bar", func(t T) { t.Log(<-t.Context.Done()) }) // cancelled
 //
 // All tasks are awaited before test completion with [sync.WaitGroup.Wait].
-// Use [PluginAsync.Wait] to manually await all running goroutines.
+// Use [PluginAsync.Wait] to manually await all running goroutines and propagate
+// calls to [testo.T.FailNow] from goroutines (if any).
 //
 // # Difference from parallel tests
 //
@@ -169,7 +226,20 @@ func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
 //		})
 //	}
 func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option) {
-	t.unwrapWaitGroup().Go(func() {
+	t.Helper()
+
+	unwrap := t.unwrapWaitGroup()
+
+	options = append(
+		options,
+		withContext(unwrap.ctx),
+		withOnFailNow(func() {
+			unwrap.childCalledFailNow.Store(true)
+			unwrap.cancel()
+		}),
+	)
+
+	unwrap.go_(func() {
 		t.Helper()
 
 		testo.Run(t, name, f, options...)
