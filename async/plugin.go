@@ -37,7 +37,7 @@ type PluginAsync struct {
 	cancel context.CancelFunc
 
 	childCalledFailNow atomic.Bool
-	propagatedFailNow  atomic.Bool
+	calledFailNow      atomic.Bool
 
 	onFailNow func()
 }
@@ -76,7 +76,7 @@ func (pa *PluginAsync) Wait() {
 
 	pa.wg.Wait()
 
-	if pa.childCalledFailNow.Load() && pa.propagatedFailNow.CompareAndSwap(false, true) {
+	if pa.childCalledFailNow.Load() && pa.calledFailNow.CompareAndSwap(false, true) {
 		pa.Fatalf("async: goroutine called FailNow")
 	}
 }
@@ -85,7 +85,11 @@ func (pa *PluginAsync) overrides() testoplugin.Overrides {
 	return testoplugin.Overrides{
 		FailNow: func(f testoplugin.FuncFailNow) testoplugin.FuncFailNow {
 			if pa.onFailNow == nil {
-				return f
+				return func() {
+					defer pa.calledFailNow.Store(true)
+
+					f()
+				}
 			}
 
 			return func() {
