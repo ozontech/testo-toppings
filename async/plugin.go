@@ -21,7 +21,7 @@ type CommonT interface {
 
 	Wait()
 
-	unwrapWaitGroup() *PluginAsync
+	unwrapAsync() *PluginAsync
 }
 
 // PluginAsync simplifies goroutine spawning in tests.
@@ -171,7 +171,7 @@ func (pa *PluginAsync) after() testoplugin.Hook {
 	}
 }
 
-func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
+func (pa *PluginAsync) unwrapAsync() *PluginAsync {
 	return pa
 }
 
@@ -228,7 +228,7 @@ func (pa *PluginAsync) unwrapWaitGroup() *PluginAsync {
 func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option) {
 	t.Helper()
 
-	unwrap := t.unwrapWaitGroup()
+	unwrap := t.unwrapAsync()
 
 	options = append(
 		options,
