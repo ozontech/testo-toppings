@@ -104,7 +104,7 @@ func (pa *PluginAsync) Wait() {
 	pa.wg.Wait()
 
 	if pa.childCalledFailNow.Load() && pa.propagatedFailNow.CompareAndSwap(false, true) {
-		pa.Fatalf("async: one of the goroutines called FailNow")
+		pa.Fatalf("async: goroutine called FailNow")
 	}
 }
 
