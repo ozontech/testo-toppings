@@ -83,6 +83,7 @@ func (pa *PluginAsync) Wait() {
 
 func (pa *PluginAsync) overrides() testoplugin.Overrides {
 	return testoplugin.Overrides{
+		Priority: testoplugin.TryFirst,
 		FailNow: func(f testoplugin.FuncFailNow) testoplugin.FuncFailNow {
 			if pa.onFailNow == nil {
 				return func() {
