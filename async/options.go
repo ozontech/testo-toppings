@@ -12,7 +12,7 @@ type option func(p *PluginAsync)
 // A negative value indicates no limit.
 // A limit of zero will prevent any new goroutines from being added.
 //
-// Any subsequent call to the [Run] method will block until it can add an active
+// Any subsequent call to the [Run] function will block until it can add an active
 // goroutine without exceeding the configured limit.
 func WithLimit(n int) testoplugin.Option {
 	return testoplugin.Option{
