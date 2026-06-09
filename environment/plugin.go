@@ -10,9 +10,9 @@ import (
 	"github.com/ozontech/testo/testoplugin"
 )
 
-const (
-	defaultEnvName = ".env"
-)
+// DefaultEnviroments is the default list of .env files to load.
+// By default, it loads the .env file from the current directory when no files are specified.
+var DefaultEnviroments = []string{".env"}
 
 var _ testoplugin.Plugin = (*PluginEnvironment)(nil)
 
@@ -24,6 +24,7 @@ type PluginEnvironment struct {
 // Plugin implements [testoplugin.Plugin].
 // Loads environment variables from .env files before all tests run.
 // Later files overwrite earlier files for the same key.
+// If no files are specified, loads the default .env file from the current directory.
 func (p *PluginEnvironment) Plugin(
 	_ testoplugin.Plugin,
 	options ...testoplugin.Option,
@@ -36,7 +37,7 @@ func (p *PluginEnvironment) Plugin(
 	}
 
 	if len(p.filenames) == 0 {
-		p.filenames = append(p.filenames, defaultEnvName)
+		p.filenames = append(p.filenames, DefaultEnviroments...)
 	}
 
 	return testoplugin.Spec{

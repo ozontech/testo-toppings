@@ -26,6 +26,19 @@ func Test(t *testing.T) {
 - Sets environment variables in `BeforeAll` hook
 - Supports multiple `.env` files (later files overwrite earlier ones)
 - Handles comments (`#`) and empty lines
+- Defaults to loading `.env` from the current directory if no files specified
+
+## Default File Loading
+
+By default, the plugin loads `.env` from the current directory when no files are specified:
+```go
+func Test(t *testing.T) {
+    options := []testoplugin.Option{
+        environment.WithEnvironments(),  // Loads .env automatically
+    }
+    testo.RunSuite(t, new(Suite), options...)
+}
+```
 
 ## .env File Format
 
@@ -44,3 +57,14 @@ environment.WithEnvironments("base.env", "override.env")
 ```
 
 In this case, `override.env` values take precedence over `base.env` values.
+
+## Custom Default Files
+
+You can customize the default files loaded when no explicit files are specified:
+```go
+package environment
+
+var DefaultEnviroments = []string{".env", "config.env"}
+```
+
+This will load both `.env` and `config.env` when `WithEnvironments()` is called without arguments.
