@@ -2,6 +2,8 @@
 
 Provides a test‑aware [`sync.WaitGroup`] with configurable goroutine limits.
 
+See [Difference from parallel tests](#difference-from-parallel-tests).
+
 ## Quick Start
 
 ```bash
@@ -49,7 +51,7 @@ async.Run(t, "b", func(t T) { ... })
 t.Wait() // wait for these ^2 goroutines to finish
 
 // test will wait for this goroutine to finish in the end.
-async.Run(t, "a", func(t T) { ... }) 
+async.Run(t, "a", func(t T) { ... })
 ```
 
 ## Difference from parallel tests
