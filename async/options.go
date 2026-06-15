@@ -29,6 +29,15 @@ func WithLimit(n int) testoplugin.Option {
 	}
 }
 
+func withAsync() testoplugin.Option {
+	return testoplugin.Option{
+		Value: option(func(p *PluginAsync) {
+			p.inAsync = true
+		}),
+		Propagate: true,
+	}
+}
+
 func withOnFailNow(f func()) testoplugin.Option {
 	return testoplugin.Option{
 		Value: option(func(p *PluginAsync) {

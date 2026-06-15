@@ -40,6 +40,8 @@ type PluginAsync struct {
 	calledFailNow      atomic.Bool
 
 	onFailNow func()
+
+	inAsync bool
 }
 
 // Plugin implements [testoplugin.Plugin].
@@ -84,6 +86,17 @@ func (pa *PluginAsync) Wait() {
 func (pa *PluginAsync) overrides() testoplugin.Overrides {
 	return testoplugin.Overrides{
 		Priority: testoplugin.TryFirst,
+		Parallel: func(f testoplugin.FuncParallel) testoplugin.FuncParallel {
+			if !pa.inAsync {
+				return f
+			}
+
+			return func() {
+				pa.Helper()
+
+				panic("async: call to parallel inside async.Run")
+			}
+		},
 		FailNow: func(f testoplugin.FuncFailNow) testoplugin.FuncFailNow {
 			if pa.onFailNow == nil {
 				return func() {
@@ -237,6 +250,7 @@ func Run[T CommonT](t T, name string, f func(t T), options ...testoplugin.Option
 
 	options = append(
 		options,
+		withAsync(),
 		withContext(unwrap.ctx),
 		withOnFailNow(func() {
 			unwrap.childCalledFailNow.Store(true)
