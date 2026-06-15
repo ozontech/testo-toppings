@@ -51,8 +51,12 @@ func (x *PluginXFail) plugin(parent *PluginXFail, options ...testoplugin.Option)
 			AfterEach: testoplugin.Hook{
 				Func: x.afterEach,
 			},
+			AfterEachSub: testoplugin.Hook{
+				Func: x.afterEach,
+			},
 		},
 		Overrides: testoplugin.Overrides{
+			Priority: testoplugin.TryLast,
 			Fail: func(f testoplugin.FuncFail) testoplugin.FuncFail {
 				x.Helper()
 

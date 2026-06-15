@@ -11,5 +11,6 @@ A collection of small, miscellaneous plugins for [Testo framework](https://githu
 - [Rerun](./rerun) - adds `--last-failed`-like behaviour from Pytest to Testo. Makes it possible to rerun only failed tests.
 - [XFail](./xfail) - adds `t.XFail()` method to mark a test as "expected to fail".
 - [Parallel](./parallel) - marks all tests as parallel by default.
+- [Async](./async) - provides a test‑aware `sync.WaitGroup`.
 
 See also [Allure plugin for Testo](https://github.com/ozontech/testo-allure) - visualize results of a test run with [Allure Report](https://allurereport.org/).

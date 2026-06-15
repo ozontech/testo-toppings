@@ -25,6 +25,7 @@ linters:
     - depguard
     - exhaustive
     - exhaustruct
+    - containedctx
     - wrapcheck
     - varnamelen
     - mnd
