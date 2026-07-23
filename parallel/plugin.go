@@ -24,11 +24,16 @@ var parallelTests sync.Map
 
 // Plugin implements [testoplugin.Plugin].
 func (p *PluginParallel) Plugin(
-	_ testoplugin.Plugin,
+	parent testoplugin.Plugin,
 	options ...testoplugin.Option,
 ) testoplugin.Spec {
-	p.sync = *flagSync
-	p.scope = SuiteTests
+	if parentPtr, ok := parent.(*PluginParallel); ok && parentPtr != nil {
+		p.sync = parentPtr.sync
+		p.scope = parentPtr.scope
+	} else {
+		p.sync = *flagSync
+		p.scope = SuiteTests
+	}
 
 	for _, opt := range options {
 		if o, ok := opt.Value.(option); ok {
@@ -43,6 +48,10 @@ func (p *PluginParallel) Plugin(
 				return func() {
 					regular, ok := testo.Reflect(p).Test.(testoreflect.RegularTestInfo)
 					if !ok {
+						return
+					}
+
+					if p.sync {
 						return
 					}
 
