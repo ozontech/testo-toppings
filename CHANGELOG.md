@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- With `-rerun.failed`, a suite that failed only in its `BeforeAll`/`AfterAll` hooks
+  (without failed tests) is now re-run instead of being skipped: the rerun plugin
+  looked it up in the cache under a wrong key.
+
 ## [1.2.0] - 2026-06-15
 
 ### Added

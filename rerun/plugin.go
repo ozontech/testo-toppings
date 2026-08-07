@@ -39,6 +39,10 @@ func (pr *PluginRerun) Plugin(testoplugin.Plugin, ...testoplugin.Option) testopl
 	}
 }
 
+func suiteKey(s testoreflect.SuiteInfo) string {
+	return s.Caller + keySep + s.Name
+}
+
 func (pr *PluginRerun) hooks() testoplugin.Hooks {
 	return testoplugin.Hooks{
 		BeforeAll:  pr.beforeAll(),
@@ -57,7 +61,7 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 					r := testo.Reflect(pr)
 
 					s := suite{
-						Name:   r.Suite.Caller + keySep + r.Suite.Name,
+						Name:   suiteKey(r.Suite),
 						Failed: pr.Failed(),
 					}
 
@@ -84,7 +88,7 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 
 			suite := testo.Reflect(pr).Suite
 
-			if !c.Suites[suite.Caller+keySep+suite.Name].Failed {
+			if !c.Suites[suiteKey(suite)].Failed {
 				// inside a suiteless test
 				if suite.Name == "" {
 					pr.Skipf(
@@ -164,7 +168,7 @@ func (pr *PluginRerun) plan() testoplugin.Plan {
 
 			// Suite failed, but no actual tests were failed.
 			// It means suite failed in BeforeAll or/and AfterAll hooks.
-			if c.Suites[suite.Caller+"/"+suite.Name].Failed {
+			if c.Suites[suiteKey(suite)].Failed {
 				return
 			}
 
