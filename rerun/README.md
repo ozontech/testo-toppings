@@ -40,5 +40,11 @@ go test . -rerun.failed
 
 This flag will instruct plugin to execute tests failed in the previous run.
 
-If there are no previous runs or no failed tests
-since last run, suite will be skipped by calling `t.Skip()` underneath.
+If there are no previous runs or no failed tests since last run, the
+whole suite is skipped with `t.Skip()` before any suite hooks run.
+The skip is visible in test output, but invisible to reporting plugins
+(e.g. Allure), whose hooks never get a chance to record anything.
+
+In a suite that does have failures, non-failed tests are excluded
+from the plan entirely rather than skipped, so reporting plugins do
+not record previously passed tests as skipped.

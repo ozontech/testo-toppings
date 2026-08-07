@@ -1,9 +1,12 @@
-// Package rerun provides plugin for pytest-like rerun functionality for failed tests.
+// Package rerun re-runs tests that failed in the previous session,
+// like pytest's --last-failed.
 package rerun
 
 import (
 	"flag"
 	"path"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/ozontech/testo"
@@ -16,20 +19,20 @@ var _ testoplugin.Plugin = (*PluginRerun)(nil)
 
 var flagFailed = flag.Bool("rerun.failed", false, "only re-run the failures from last session")
 
-// PluginRerun providers plugin for pytest-like rerun functionality for failed tests.
+// PluginRerun re-runs tests that failed in the previous session,
+// like pytest's --last-failed.
 type PluginRerun struct {
 	*testo.T
 }
 
 var (
 	logFailedReadOnce sync.Once
-	readCacheOnce     = sync.OnceValues(readCache)
-)
 
-// read cache as early as possible, but handle actual results later.
-func init() {
-	_, _ = readCacheOnce()
-}
+	// The first call must happen after flag.Parse (-cache.dir,
+	// -cache.disable) and before any cache writes. The first hook
+	// satisfies both, since writes only happen in cleanups.
+	readCacheOnce = sync.OnceValues(readCache)
+)
 
 // Plugin implements [testoplugin.Plugin].
 func (pr *PluginRerun) Plugin(testoplugin.Plugin, ...testoplugin.Option) testoplugin.Spec {
@@ -41,6 +44,51 @@ func (pr *PluginRerun) Plugin(testoplugin.Plugin, ...testoplugin.Option) testopl
 
 func suiteKey(s testoreflect.SuiteInfo) string {
 	return s.Caller + keySep + s.Name
+}
+
+// suiteTestPrefix returns the prefix of full test names belonging to s.
+// Cached names are logical, but for sub-suites s.Caller is the real
+// testing.T name, so strip the "testo!" wrapper segments from it.
+//
+// For suiteless tests (Name == "") the prefix is just the caller and may
+// also match sibling suites under it: better to rerun too much than
+// to lose a failure.
+func suiteTestPrefix(s testoreflect.SuiteInfo) string {
+	segments := slices.DeleteFunc(
+		strings.Split(s.Caller, "/"),
+		func(seg string) bool { return seg == "testo!" },
+	)
+
+	prefix := strings.Join(segments, "/") + "/"
+
+	if s.Name != "" {
+		prefix += s.Name + "/"
+	}
+
+	return prefix
+}
+
+// failedIn reports whether s or any cached test belonging to s failed.
+// The suite flag alone is not enough: a partial session (e.g. -test.run)
+// can record the suite as passed while a failed test entry still exists.
+func (c cache) failedIn(s testoreflect.SuiteInfo) bool {
+	return c.Suites[suiteKey(s)].Failed || c.anyFailedWithPrefix(suiteTestPrefix(s))
+}
+
+// failedUnder reports whether the named test or any cached test below it
+// (e.g. inside a sub-suite it spawns) failed.
+func (c cache) failedUnder(name string) bool {
+	return c.Tests[name].Failed || c.anyFailedWithPrefix(name+"/")
+}
+
+func (c cache) anyFailedWithPrefix(prefix string) bool {
+	for name, t := range c.Tests {
+		if t.Failed && strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (pr *PluginRerun) hooks() testoplugin.Hooks {
@@ -60,7 +108,7 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 				pr.Cleanup(func() {
 					r := testo.Reflect(pr)
 
-					s := suite{
+					s := suiteEntry{
 						Name:   suiteKey(r.Suite),
 						Failed: pr.Failed(),
 					}
@@ -88,7 +136,12 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 
 			suite := testo.Reflect(pr).Suite
 
-			if !c.Suites[suiteKey(suite)].Failed {
+			// This skip runs before the suite's own BeforeAll and, being
+			// TryFirst, before other plugins' hooks. It avoids suite
+			// setup and stays out of reports: Allure registers its
+			// writers in its own BeforeAll, which never runs.
+			// Individual tests are never skipped, see plan().
+			if !c.failedIn(suite) {
 				// inside a suiteless test
 				if suite.Name == "" {
 					pr.Skipf(
@@ -108,6 +161,9 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 
 func (pr *PluginRerun) beforeEach() testoplugin.Hook {
 	return testoplugin.Hook{
+		// TryFirst, so a failing BeforeEach hook in another plugin is
+		// less likely to leave this session's result unrecorded.
+		Priority: testoplugin.TryFirst,
 		Func: func() {
 			pr.Helper()
 
@@ -119,7 +175,6 @@ func (pr *PluginRerun) beforeEach() testoplugin.Hook {
 				t := test{
 					Name:   pr.Name(),
 					Failed: pr.Failed(),
-					Suite:  testo.Reflect(pr).Suite.Name,
 				}
 
 				if err := t.Cache(); err != nil {
@@ -153,9 +208,7 @@ func (pr *PluginRerun) plan() testoplugin.Plan {
 			failed := make([]testoplugin.PlannedTest, 0, len(*tests))
 
 			for _, t := range *tests {
-				cachedTest := c.Tests[t.Info().GetName()]
-
-				if cachedTest.Failed {
+				if c.failedUnder(t.Info().GetName()) {
 					failed = append(failed, t)
 				}
 			}
@@ -166,16 +219,32 @@ func (pr *PluginRerun) plan() testoplugin.Plan {
 				return
 			}
 
-			// Suite failed, but no actual tests were failed.
-			// It means suite failed in BeforeAll or/and AfterAll hooks.
+			// Suite failed, but no planned test has a cached failure:
+			// it failed in BeforeAll/AfterAll hooks, or the failed test
+			// is no longer planned. Re-run everything.
 			if c.Suites[suiteKey(suite)].Failed {
 				return
 			}
 
-			pr.Skipf(
-				"rerun: there are no known test failures for suite %q, skipping",
-				suite.Name,
-			)
+			// A cached failure exists (beforeAll did not skip), but no
+			// planned test matches it: the test was renamed or removed.
+			// Empty the plan rather than skip, since t.Skip here would
+			// suppress AfterAll hooks and mark tests skipped in reports.
+			//
+			// inside a suiteless test
+			if suite.Name == "" {
+				pr.Logf(
+					"rerun: known test failure for %q matches no planned test, running nothing",
+					path.Base(suite.Caller),
+				)
+			} else {
+				pr.Logf(
+					"rerun: known test failures for suite %q match no planned test, running nothing",
+					suite.Name,
+				)
+			}
+
+			*tests = nil
 		},
 	}
 }

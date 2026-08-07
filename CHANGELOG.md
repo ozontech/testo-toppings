@@ -7,11 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Update `testo` to v1.7.0.
+
 ### Fixed
 
-- With `-rerun.failed`, a suite that failed only in its `BeforeAll`/`AfterAll` hooks
-  (without failed tests) is now re-run instead of being skipped: the rerun plugin
-  looked it up in the cache under a wrong key.
+- Rerun plugin looked up suites under a wrong cache key, so a suite that failed
+  only in `BeforeAll`/`AfterAll` hooks was skipped instead of re-run.
+- Rerun plugin read the cache in `init`, ignoring the `-cache.dir` and
+  `-cache.disable` flags.
+- Test and suite names that differ only by `-` vs `/` shared one cache entry,
+  which could leave a failed test out of the rerun. Cache keys changed format,
+  so the first `-rerun.failed` after the upgrade finds no previous failures.
+- Runs filtered with `-test.run` erased previous failures. Now a suite is kept
+  whenever it or any test under it failed, including in sub-suites.
+- `-rerun.failed` with `-cache.disable` now warns and runs all tests instead
+  of skipping everything as if nothing had failed.
 
 ## [1.2.0] - 2026-06-15
 

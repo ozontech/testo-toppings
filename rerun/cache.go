@@ -2,14 +2,17 @@ package rerun
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	"github.com/ozontech/testo/testocache"
 )
 
 const (
-	keySep         = "-"
-	keyPrefix      = "rerun" + keySep
+	keySep = "-"
+	// v2: names are URL-escaped. v1 replaced "/" with "-", so "a-b" and
+	// "a/b" clobbered each other; the bump also hides stale v1 entries.
+	keyPrefix      = "rerun" + keySep + "v2" + keySep
 	keyTestPrefix  = keyPrefix + "test" + keySep
 	keySuitePrefix = keyPrefix + "suite" + keySep
 )
@@ -17,15 +20,14 @@ const (
 func newCache() cache {
 	return cache{
 		Tests:  make(map[string]test),
-		Suites: make(map[string]suite),
+		Suites: make(map[string]suiteEntry),
 	}
 }
 
+// readCache loads all cached entries. With caching disabled it returns
+// testocache.ErrDisabled, so callers run everything instead of treating
+// the empty cache as "nothing failed".
 func readCache() (cache, error) {
-	if testocache.Disabled() {
-		return newCache(), nil
-	}
-
 	keys, err := testocache.Keys(keyPrefix + "*")
 	if err != nil {
 		return cache{}, err
@@ -46,7 +48,7 @@ func readCache() (cache, error) {
 			c.Tests[t.Name] = t
 
 		case strings.HasPrefix(k, keySuitePrefix):
-			var s suite
+			var s suiteEntry
 
 			err = cacheGetJSON(k, &s)
 			if err != nil {
@@ -76,14 +78,13 @@ type cache struct {
 
 	// Suites holds data about cached suites.
 	// Key is suite name.
-	Suites map[string]suite
+	Suites map[string]suiteEntry
 }
 
 // test is a cached test.
 type test struct {
 	Name   string `json:"n"`
 	Failed bool   `json:"f"`
-	Suite  string `json:"s"`
 }
 
 func (t test) Cache() error {
@@ -95,13 +96,13 @@ func (t test) Cache() error {
 	return testocache.Set(keyTestPrefix+normalize(t.Name), marshalled)
 }
 
-// suite is a cached suite.
-type suite struct {
+// suiteEntry is a cached suite.
+type suiteEntry struct {
 	Name   string `json:"n"`
 	Failed bool   `json:"f"`
 }
 
-func (s suite) Cache() error {
+func (s suiteEntry) Cache() error {
 	marshalled, err := json.Marshal(s)
 	if err != nil {
 		return err
@@ -110,6 +111,8 @@ func (s suite) Cache() error {
 	return testocache.Set(keySuitePrefix+normalize(s.Name), marshalled)
 }
 
+// normalize escapes s without collisions and keeps "/" out of keys:
+// testocache.Keys matches with path.Match, whose "*" does not cross "/".
 func normalize(s string) string {
-	return strings.ReplaceAll(s, "/", keySep)
+	return url.PathEscape(s)
 }
