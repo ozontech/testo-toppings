@@ -3,19 +3,32 @@ package rerun
 import (
 	"encoding/json"
 	"net/url"
+	"runtime/debug"
 	"strings"
 
 	"github.com/ozontech/testo/testocache"
 )
 
 const (
-	keySep = "-"
-	// v2: names are URL-escaped. v1 replaced "/" with "-", so "a-b" and
-	// "a/b" clobbered each other; the bump also hides stale v1 entries.
-	keyPrefix      = "rerun" + keySep + "v2" + keySep
-	keyTestPrefix  = keyPrefix + "test" + keySep
-	keySuitePrefix = keyPrefix + "suite" + keySep
+	keySep         = "-"
+	keyTestPrefix  = "test" + keySep
+	keySuitePrefix = "suite" + keySep
 )
+
+// The cache is namespaced per package: boilerplate names like Test/Suite
+// repeat across packages, and with a shared TESTO_CACHE_DIR their entries
+// would mix. The namespace also hides entries of older plugin versions,
+// which used lossy keys in the shared keyspace.
+var cacheNS = testocache.Namespace("rerun" + keySep + packagePath())
+
+func packagePath() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSuffix(bi.Path, ".test")
+}
 
 func newCache() cache {
 	return cache{
@@ -28,7 +41,7 @@ func newCache() cache {
 // testocache.ErrDisabled, so callers run everything instead of treating
 // the empty cache as "nothing failed".
 func readCache() (cache, error) {
-	keys, err := testocache.Keys(keyPrefix + "*")
+	keys, err := cacheNS.Keys("*")
 	if err != nil {
 		return cache{}, err
 	}
@@ -63,7 +76,7 @@ func readCache() (cache, error) {
 }
 
 func cacheGetJSON(key string, v any) error {
-	value, err := testocache.Get(key)
+	value, err := cacheNS.Get(key)
 	if err != nil {
 		return err
 	}
@@ -77,7 +90,7 @@ type cache struct {
 	Tests map[string]test
 
 	// Suites holds data about cached suites.
-	// Key is suite name.
+	// Key is the suite key, see suiteKey.
 	Suites map[string]suiteEntry
 }
 
@@ -93,7 +106,7 @@ func (t test) Cache() error {
 		return err
 	}
 
-	return testocache.Set(keyTestPrefix+normalize(t.Name), marshalled)
+	return cacheNS.Set(keyTestPrefix+normalize(t.Name), marshalled)
 }
 
 // suiteEntry is a cached suite.
@@ -108,7 +121,7 @@ func (s suiteEntry) Cache() error {
 		return err
 	}
 
-	return testocache.Set(keySuitePrefix+normalize(s.Name), marshalled)
+	return cacheNS.Set(keySuitePrefix+normalize(s.Name), marshalled)
 }
 
 // normalize escapes s without collisions and keeps "/" out of keys:

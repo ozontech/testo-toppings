@@ -48,3 +48,6 @@ The skip is visible in test output, but invisible to reporting plugins
 In a suite that does have failures, non-failed tests are excluded
 from the plan entirely rather than skipped, so reporting plugins do
 not record previously passed tests as skipped.
+
+The cache is kept per package, so many packages can share a single
+cache directory (e.g. via `TESTO_CACHE_DIR`) without interfering.

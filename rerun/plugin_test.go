@@ -25,10 +25,24 @@ func runFixture(
 ) (out string, pass bool) {
 	t.Helper()
 
+	return runFixtureIn(t, "internal/fixture", cacheDir, failNames, args...)
+}
+
+// runFixtureIn is runFixture for an arbitrary fixture package.
+// Safe to call from a goroutine: it never calls t.Fatal.
+func runFixtureIn(
+	t *testing.T,
+	pkgDir string,
+	cacheDir string,
+	failNames []string,
+	args ...string,
+) (out string, pass bool) {
+	t.Helper()
+
 	cmd := exec.Command(
 		"go",
 		append([]string{"test", "-count=1", "-v", "-tags", "rerunfixture"}, args...)...)
-	cmd.Dir = "internal/fixture"
+	cmd.Dir = pkgDir
 	cmd.Env = append(os.Environ(),
 		"TESTO_CACHE_DIR="+cacheDir,
 		"RERUN_FIXTURE_FAIL="+strings.Join(failNames, ","),
@@ -38,7 +52,9 @@ func runFixture(
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			t.Fatalf("running fixture: %v\n%s", err, b)
+			t.Errorf("running fixture: %v\n%s", err, b)
+
+			return string(b), false
 		}
 	}
 
@@ -336,6 +352,64 @@ func TestHookFailureRerun(t *testing.T) {
 	)
 }
 
+// TestSharedCacheDir verifies that packages sharing one TESTO_CACHE_DIR
+// do not interfere: both fixture packages use the boilerplate names
+// Test and Suite, so without per-package isolation one package's failure
+// would block the other's skip.
+func TestSharedCacheDir(t *testing.T) {
+	dir := t.TempDir()
+	failA := []string{"Test/Suite/TestA"}
+	run := []string{"-run", "Test/Suite"}
+
+	// Both packages write concurrently, as `go test ./...` would.
+	type result struct {
+		out  string
+		pass bool
+	}
+
+	c1 := make(chan result, 1)
+	c2 := make(chan result, 1)
+
+	go func() {
+		out, pass := runFixtureIn(t, "internal/fixture", dir, failA, run...)
+		c1 <- result{out, pass}
+	}()
+	go func() {
+		out, pass := runFixtureIn(t, "internal/fixture2", dir, nil, run...)
+		c2 <- result{out, pass}
+	}()
+
+	r1, r2 := <-c1, <-c2
+	assert(t, !r1.pass, "run 1: fixture expected failure, got pass:\n%s", r1.out)
+	assert(t, r2.pass, "run 1: fixture2 expected pass:\n%s", r2.out)
+
+	rerun := append(run, "-args", "-rerun.failed")
+
+	out, pass := runFixture(t, dir, failA, rerun...)
+	assert(t, !pass, "run 2: fixture expected failure, got pass:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "--- FAIL: Test/Suite/testo!/TestA"),
+		"run 2: TestA was not rerun:\n%s",
+		out,
+	)
+
+	out, pass = runFixtureIn(t, "internal/fixture2", dir, nil, rerun...)
+	assert(t, pass, "run 2: fixture2 expected pass:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "--- SKIP: Test/Suite "),
+		"run 2: fixture2 suite was not skipped despite having no failures:\n%s",
+		out,
+	)
+	assert(
+		t,
+		!strings.Contains(out, "--- PASS: Test/Suite/testo!/TestC"),
+		"run 2: fixture2 tests ran, but nothing failed there:\n%s",
+		out,
+	)
+}
+
 // TestStaleFailureExcludesPlan verifies the fallback for a cached failure
 // whose test no longer exists (e.g. renamed): the suite is not skipped
 // (its hooks run), but nothing is executed and nothing is marked skipped.
@@ -349,10 +423,13 @@ func TestStaleFailureExcludesPlan(t *testing.T) {
 
 	t.Cleanup(func() { _ = flag.Set("cache.dir", old) })
 
-	// A failed entry for a test that is not planned anymore,
-	// written in the plugin's on-disk format.
-	err := testocache.Set(
-		"rerun-v2-test-"+url.PathEscape("Test/Suite/TestGone"),
+	// A failed entry for a test that is not planned anymore, written in
+	// the plugin's on-disk format: a namespace per package import path,
+	// keys inside it prefixed with "test-".
+	ns := testocache.Namespace("rerun-github.com/ozontech/testo-toppings/rerun/internal/fixture")
+
+	err := ns.Set(
+		"test-"+url.PathEscape("Test/Suite/TestGone"),
 		[]byte(`{"n":"Test/Suite/TestGone","f":true}`),
 	)
 	if err != nil {

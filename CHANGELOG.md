@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the first `-rerun.failed` after the upgrade finds no previous failures.
 - Runs filtered with `-test.run` erased previous failures. Now a suite is kept
   whenever it or any test under it failed, including in sub-suites.
+- Packages sharing one `TESTO_CACHE_DIR` interfered with each other:
+  boilerplate names like `Test/Suite` repeat across packages, so a failure
+  in one could block another's skip. The cache is now namespaced per package.
 - `-rerun.failed` with `-cache.disable` now warns and runs all tests instead
   of skipping everything as if nothing had failed.
 
