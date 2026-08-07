@@ -112,6 +112,15 @@ func TestSyncSingle(t *testing.T) {
 	testo.RunTest(t, func(t T) {}, parallel.WithSync())
 }
 
+// TestSetenvRoot calls t.Setenv on the native test, which makes marking
+// it parallel illegal. The plugin must fail the test, not crash the
+// binary.
+func TestSetenvRoot(t *testing.T) {
+	t.Setenv("PARALLEL_FIXTURE_ENV", "1")
+
+	testo.RunTest(t, func(t T) {})
+}
+
 type SyncSuite struct{ testo.Suite[T] }
 
 func (SyncSuite) TestS(t T) {}

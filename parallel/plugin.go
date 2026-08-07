@@ -85,13 +85,24 @@ func (p *PluginParallel) plan() testoplugin.Plan {
 		Prepare: func(suite testoreflect.SuiteInfo, tests *[]testoplugin.PlannedTest) {
 			p.Helper()
 
+			// testo runs Prepare bare, unlike hooks: a panic here (say,
+			// Parallel on a root test that used t.Setenv) would crash the
+			// whole binary, so turn it into a test failure.
+			defer func() {
+				if r := recover(); r != nil {
+					p.Fatalf("parallel: %v", r)
+				}
+			}()
+
 			if suite.Name != "" {
 				return
 			}
 
-			// The plan holds at most one test; fold its options into the
-			// plugin config. Nothing reads this config after Prepare, so
-			// mutating it in place is fine.
+			// Fold the tests' options into the plugin config: one test
+			// for testo.Test and testo.RunTest; for anonymous-struct
+			// suites lumped in here, any sync test makes the whole suite
+			// sync. Nothing reads this config after Prepare, so mutating
+			// it in place is fine.
 			seen := false
 
 			for _, t := range *tests {
@@ -149,8 +160,8 @@ func (p *PluginParallel) hooks() testoplugin.Hooks {
 	}
 }
 
-// parallelizeSuite marks the current suite and, within [Tests] scope,
-// the native test it runs under as parallel.
+// parallelizeSuite marks, within [Suites] scope, the current suite and,
+// within [Tests] scope, the native test it runs under as parallel.
 func (p *PluginParallel) parallelizeSuite() {
 	if p.sync {
 		return
@@ -173,6 +184,10 @@ func (p *PluginParallel) parallelizeSuite() {
 	if _, ok := parallelTests.LoadOrStore(t, struct{}{}); ok {
 		return
 	}
+
+	// The entry has done its job once the root finishes; drop it so long
+	// -count runs don't pin every past testing.T in memory.
+	t.Cleanup(func() { parallelTests.Delete(t) })
 
 	// The map only tracks this plugin's calls; user code may have marked
 	// the test parallel too.

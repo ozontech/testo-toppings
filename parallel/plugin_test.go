@@ -47,6 +47,7 @@ func assert(t *testing.T, cond bool, format string, args ...any) {
 func TestSyncOption(t *testing.T) {
 	out, pass := runFixture(t, "-run", "TestSyncTable")
 	assert(t, pass, "expected pass:\n%s", out)
+	assert(t, strings.Contains(out, "--- PASS: TestSyncTable"), "test did not run:\n%s", out)
 	assert(
 		t,
 		!strings.Contains(out, "=== PAUSE TestSyncTable"),
@@ -100,6 +101,7 @@ func TestMixedTable(t *testing.T) {
 func TestGlobalSyncFlag(t *testing.T) {
 	out, pass := runFixture(t, "-run", "TestMixed", "-args", "-parallel.sync")
 	assert(t, pass, "expected pass:\n%s", out)
+	assert(t, strings.Contains(out, "--- PASS: TestMixed"), "test did not run:\n%s", out)
 	assert(t, !strings.Contains(out, "=== PAUSE"), "a test went parallel:\n%s", out)
 }
 
@@ -107,6 +109,7 @@ func TestGlobalSyncFlag(t *testing.T) {
 func TestRunTestSync(t *testing.T) {
 	out, pass := runFixture(t, "-run", "TestSyncSingle")
 	assert(t, pass, "expected pass:\n%s", out)
+	assert(t, strings.Contains(out, "--- PASS: TestSyncSingle"), "test did not run:\n%s", out)
 	assert(t, !strings.Contains(out, "=== PAUSE"), "the test went parallel:\n%s", out)
 }
 
@@ -115,7 +118,24 @@ func TestRunTestSync(t *testing.T) {
 func TestSuiteSyncOption(t *testing.T) {
 	out, pass := runFixture(t, "-run", "TestSyncSuite")
 	assert(t, pass, "expected pass:\n%s", out)
+	assert(t, strings.Contains(out, "--- PASS: TestSyncSuite"), "test did not run:\n%s", out)
 	assert(t, !strings.Contains(out, "=== PAUSE"), "the sync suite went parallel:\n%s", out)
+}
+
+// TestSetenvRootFails verifies that a root test using t.Setenv, which
+// cannot be marked parallel, fails cleanly instead of crashing the
+// test binary.
+func TestSetenvRootFails(t *testing.T) {
+	out, pass := runFixture(t, "-run", "TestSetenvRoot")
+	assert(t, !pass, "expected failure:\n%s", out)
+	assert(t, strings.Contains(out, "--- FAIL: TestSetenvRoot"), "test did not fail:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "can not use t.Parallel"),
+		"test failed for an unexpected reason:\n%s",
+		out,
+	)
+	assert(t, !strings.Contains(out, "\npanic:"), "the test binary crashed:\n%s", out)
 }
 
 // TestDefaultScope verifies that a suite-less table runs in parallel even
