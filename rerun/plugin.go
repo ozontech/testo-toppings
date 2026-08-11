@@ -32,6 +32,12 @@ var (
 	// -cache.disable) and before any cache writes. The first hook
 	// satisfies both, since writes only happen in cleanups.
 	readCacheOnce = sync.OnceValues(readCache)
+
+	// globalMu makes suite cleanups atomic: testocache synchronizes
+	// per operation only, so without it a green suite finishing
+	// concurrently with a failed one could re-scan the namespace
+	// before the failure lands and record the package as green.
+	globalMu sync.Mutex
 )
 
 // Plugin implements [testoplugin.Plugin].
@@ -106,6 +112,9 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 
 			if !testocache.Disabled() {
 				pr.Cleanup(func() {
+					globalMu.Lock()
+					defer globalMu.Unlock()
+
 					r := testo.Reflect(pr)
 
 					s := suiteEntry{
@@ -115,6 +124,25 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 
 					if err := s.Cache(); err != nil {
 						pr.Logf("rerun: failed to cache suite: %v", err)
+					}
+
+					// Test entries are already persisted: test cleanups run
+					// before the suite's, so a fresh re-scan reflects the
+					// whole session up to this suite.
+					c, err := readOwnCache()
+					if err != nil {
+						pr.Logf("rerun: failed to refresh package status: %v", err)
+
+						return
+					}
+
+					p := pkgEntry{
+						Name:   currentPkg,
+						Failed: c.anyFailure(),
+					}
+
+					if err := p.Cache(); err != nil {
+						pr.Logf("rerun: failed to cache package status: %v", err)
 					}
 				})
 			}
@@ -131,6 +159,12 @@ func (pr *PluginRerun) beforeAll() testoplugin.Hook {
 					pr.Logf("rerun: failed to read test statuses: %v", err)
 				})
 
+				return
+			}
+
+			// No failure is known in this or any other package sharing
+			// the cache dir: run everything instead of skipping.
+			if !c.anyKnownFailure() {
 				return
 			}
 
@@ -202,6 +236,12 @@ func (pr *PluginRerun) plan() testoplugin.Plan {
 					pr.Logf("rerun: failed to read test statuses: %v", err)
 				})
 
+				return
+			}
+
+			// No failure is known anywhere: keep the full plan,
+			// mirroring the no-skip in beforeAll.
+			if !c.anyKnownFailure() {
 				return
 			}
 

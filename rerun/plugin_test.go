@@ -116,30 +116,25 @@ func TestHappyPath(t *testing.T) {
 		out,
 	)
 
+	// No failure is known anywhere anymore: everything runs.
 	out, pass = runFixture(t, dir, nil, rerun...)
 	assert(t, pass, "run 4: expected pass:\n%s", out)
 	assert(
 		t,
-		strings.Contains(out, "no known test failures for suite"),
-		"run 4: no message about skipped suite:\n%s",
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestA"),
+		"run 4: TestA did not run despite all-green cache:\n%s",
 		out,
 	)
 	assert(
 		t,
-		!strings.Contains(out, "--- PASS: Test/Suite/testo!/TestA"),
-		"run 4: TestA ran, but nothing failed before:\n%s",
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestB"),
+		"run 4: TestB did not run despite all-green cache:\n%s",
 		out,
 	)
 	assert(
 		t,
-		strings.Contains(out, "--- SKIP: Test/Suite "),
-		"run 4: suite was not visibly skipped:\n%s",
-		out,
-	)
-	assert(
-		t,
-		!strings.Contains(out, "--- SKIP: Test/Suite/testo!"),
-		"run 4: individual tests were marked skipped:\n%s",
+		!strings.Contains(out, "--- SKIP:"),
+		"run 4: something was skipped, but nothing failed before:\n%s",
 		out,
 	)
 }
@@ -166,30 +161,19 @@ func TestSuiteless(t *testing.T) {
 	out, pass = runFixture(t, dir, nil, rerun...)
 	assert(t, pass, "run 3: expected pass:\n%s", out)
 
+	// No failure is known anywhere anymore: everything runs.
 	out, pass = runFixture(t, dir, nil, rerun...)
 	assert(t, pass, "run 4: expected pass:\n%s", out)
 	assert(
 		t,
-		strings.Contains(out, "no known test failure for test"),
-		"run 4: no message about skipped test:\n%s",
+		strings.Contains(out, "--- PASS: TestSolo/#00/testo!/TestSolo"),
+		"run 4: TestSolo did not run despite all-green cache:\n%s",
 		out,
 	)
 	assert(
 		t,
-		!strings.Contains(out, "--- PASS: TestSolo/#00/testo!/TestSolo"),
-		"run 4: TestSolo ran, but nothing failed before:\n%s",
-		out,
-	)
-	assert(
-		t,
-		strings.Contains(out, "--- SKIP: TestSolo/#00 "),
-		"run 4: test was not visibly skipped:\n%s",
-		out,
-	)
-	assert(
-		t,
-		!strings.Contains(out, "--- SKIP: TestSolo/#00/testo!"),
-		"run 4: individual tests were marked skipped:\n%s",
+		!strings.Contains(out, "--- SKIP:"),
+		"run 4: something was skipped, but nothing failed before:\n%s",
 		out,
 	)
 }
@@ -324,30 +308,25 @@ func TestHookFailureRerun(t *testing.T) {
 		out,
 	)
 
+	// No failure is known anywhere anymore: everything runs.
 	out, pass = runFixture(t, dir, nil, rerun...)
 	assert(t, pass, "run 3: expected pass:\n%s", out)
 	assert(
 		t,
-		strings.Contains(out, "no known test failures for suite"),
-		"run 3: no message about skipped suite:\n%s",
+		strings.Contains(out, "fixture: Hooked.BeforeAll executed"),
+		"run 3: suite BeforeAll did not run despite all-green cache:\n%s",
 		out,
 	)
 	assert(
 		t,
-		!strings.Contains(out, "fixture: Hooked.BeforeAll executed"),
-		"run 3: suite BeforeAll ran despite the skip:\n%s",
+		strings.Contains(out, "--- PASS: TestHooks/Hooked/testo!/TestH"),
+		"run 3: TestH did not run despite all-green cache:\n%s",
 		out,
 	)
 	assert(
 		t,
-		strings.Contains(out, "--- SKIP: TestHooks/Hooked "),
-		"run 3: suite was not visibly skipped:\n%s",
-		out,
-	)
-	assert(
-		t,
-		!strings.Contains(out, "--- SKIP: TestHooks/Hooked/testo!"),
-		"run 3: individual tests were marked skipped:\n%s",
+		!strings.Contains(out, "--- SKIP:"),
+		"run 3: something was skipped, but nothing failed before:\n%s",
 		out,
 	)
 }
@@ -406,6 +385,66 @@ func TestSharedCacheDir(t *testing.T) {
 		t,
 		!strings.Contains(out, "--- PASS: Test/Suite/testo!/TestC"),
 		"run 2: fixture2 tests ran, but nothing failed there:\n%s",
+		out,
+	)
+
+	// TestA passes now, so fixture's registry entry goes green.
+	out, pass = runFixture(t, dir, nil, rerun...)
+	assert(t, pass, "run 3: fixture expected pass:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestA"),
+		"run 3: TestA was not rerun:\n%s",
+		out,
+	)
+
+	// No failure is known in any package anymore: fixture2 runs everything.
+	out, pass = runFixtureIn(t, "internal/fixture2", dir, nil, rerun...)
+	assert(t, pass, "run 4: fixture2 expected pass:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestC"),
+		"run 4: fixture2 TestC did not run despite all-green caches:\n%s",
+		out,
+	)
+	assert(
+		t,
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestD"),
+		"run 4: fixture2 TestD did not run despite all-green caches:\n%s",
+		out,
+	)
+	assert(
+		t,
+		!strings.Contains(out, "--- SKIP:"),
+		"run 4: fixture2 skipped something, but nothing failed anywhere:\n%s",
+		out,
+	)
+}
+
+// TestEmptyCacheRunsAll verifies that -rerun.failed with no cache at all
+// (fresh checkout) runs everything instead of skipping everything.
+func TestEmptyCacheRunsAll(t *testing.T) {
+	dir := t.TempDir()
+	rerun := []string{"-run", "Test/Suite", "-args", "-rerun.failed"}
+
+	out, pass := runFixture(t, dir, nil, rerun...)
+	assert(t, pass, "expected pass:\n%s", out)
+	assert(
+		t,
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestA"),
+		"TestA did not run despite empty cache:\n%s",
+		out,
+	)
+	assert(
+		t,
+		strings.Contains(out, "--- PASS: Test/Suite/testo!/TestB"),
+		"TestB did not run despite empty cache:\n%s",
+		out,
+	)
+	assert(
+		t,
+		!strings.Contains(out, "--- SKIP:"),
+		"something was skipped, but no failure is known:\n%s",
 		out,
 	)
 }

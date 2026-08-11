@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `-rerun.failed` with an empty or all-green cache now runs all tests instead
+  of skipping everything. Packages sharing one `TESTO_CACHE_DIR` record their
+  failure status in a shared registry, so while any package has a known
+  failure, green packages still skip. Old caches have no registry entries,
+  so in the first session after the upgrade green packages run everything
+  once while the registry populates.
+
 ## [1.3.0] - 2026-08-07
 
 ### Changed
