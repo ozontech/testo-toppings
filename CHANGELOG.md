@@ -9,12 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `-rerun.failed` with an empty or all-green cache now runs all tests instead
-  of skipping everything. Packages sharing one `TESTO_CACHE_DIR` record their
-  failure status in a shared registry, so while any package has a known
-  failure, green packages still skip. Old caches have no registry entries,
-  so in the first session after the upgrade green packages run everything
-  once while the registry populates.
+- `-rerun.failed` with no known failure in any package sharing the cache
+  directory now runs all tests instead of skipping everything.
 
 ## [1.3.0] - 2026-08-07
 
