@@ -5,11 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [Unreleased]
 
 ### Changed
 
 - Parallel plugin calls `T.Parallel` instead of the raw `testing.T`, so plugin overrides and testo's routing apply; suite-less tests now run in parallel by default (use `WithSync` if they call `t.Setenv` or `t.Chdir`).
+- `-rerun.failed` with no known failure in any package sharing the cache
+  directory now runs all tests instead of skipping everything.
 
 ### Fixed
 
