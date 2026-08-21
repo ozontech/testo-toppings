@@ -9,8 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Parallel plugin calls `T.Parallel` instead of the raw `testing.T`, so plugin overrides and testo's routing apply; suite-less tests now run in parallel by default (use `WithSync` if they call `t.Setenv` or `t.Chdir`).
 - `-rerun.failed` with no known failure in any package sharing the cache
   directory now runs all tests instead of skipping everything.
+
+### Fixed
+
+- Parallel plugin ignored `WithSync` passed to `testo.Test` and `testo.RunTest`.
+- Parallel plugin marked a native test parallel only on the first of repeated `-count` runs.
 
 ## [1.3.0] - 2026-08-07
 

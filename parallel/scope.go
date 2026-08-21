@@ -40,7 +40,7 @@ const (
 	//		testo.RunSuite(t, new(Suite))
 	// 	}
 	//
-	// 	func TestA(t *testing.T) {
+	// 	func TestB(t *testing.T) {
 	//		testo.RunSuite(t, new(OtherSuite))
 	// 	}
 	//

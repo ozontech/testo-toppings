@@ -18,6 +18,10 @@ type PluginParallel struct {
 
 	sync  bool
 	scope Scope
+
+	// allowParallel lifts the Overrides.Parallel gate while the plugin
+	// itself is calling T.Parallel.
+	allowParallel bool
 }
 
 var parallelTests sync.Map
@@ -37,10 +41,17 @@ func (p *PluginParallel) Plugin(
 	}
 
 	return testoplugin.Spec{
+		Plan:  p.plan(),
 		Hooks: p.hooks(),
 		Overrides: testoplugin.Overrides{
 			Parallel: func(f testoplugin.FuncParallel) testoplugin.FuncParallel {
 				return func() {
+					if p.allowParallel {
+						f()
+
+						return
+					}
+
 					regular, ok := testo.Reflect(p).Test.(testoreflect.RegularTestInfo)
 					if !ok {
 						return
@@ -55,42 +66,63 @@ func (p *PluginParallel) Plugin(
 	}
 }
 
+// plan decides suite and root parallelism for suite-less tests
+// ([testo.Test] and [testo.RunTest]).
+//
+// Regular suites decide in BeforeAll: pausing before the suite's own
+// BeforeAll lets its setup run in the parallel phase.
+func (p *PluginParallel) plan() testoplugin.Plan {
+	return testoplugin.Plan{
+		Priority: testoplugin.TryLast,
+		Prepare: func(suite testoreflect.SuiteInfo, tests *[]testoplugin.PlannedTest) {
+			p.Helper()
+
+			// a panic here (say, Parallel on a root test that used t.Setenv)
+			// would crash the whole binary, so turn it into a test failure.
+			defer func() {
+				if r := recover(); r != nil {
+					p.Fatalf("parallel: %v", r)
+				}
+			}()
+
+			if suite.Name != "" {
+				return
+			}
+
+			seen := false
+
+			for _, t := range *tests {
+				if t == nil {
+					continue
+				}
+
+				seen = true
+
+				for _, opt := range t.Annotations() {
+					if o, ok := opt.Value.(option); ok {
+						o(p)
+					}
+				}
+			}
+
+			if !seen {
+				return
+			}
+
+			p.parallelizeSuite()
+		},
+	}
+}
+
 func (p *PluginParallel) hooks() testoplugin.Hooks {
 	return testoplugin.Hooks{
 		BeforeAll: testoplugin.Hook{
 			Func: func() {
-				if p.sync {
+				if testo.Reflect(p).Suite.Name == "" {
 					return
 				}
 
-				if p.scope.has(Suites) {
-					p.rawParallel()
-				}
-
-				if !p.scope.has(Tests) {
-					return
-				}
-
-				t := p.root()
-
-				if _, ok := parallelTests.LoadOrStore(t.Name(), struct{}{}); ok {
-					return
-				}
-
-				defer func() {
-					r := recover()
-					if r == nil {
-						return
-					}
-
-					if fmt.Sprint(r) == "testing: t.Parallel called multiple times" {
-						return
-					}
-
-					panic(r)
-				}()
-
-				t.Parallel()
+				p.parallelizeSuite()
 			},
 		},
 		BeforeEach: testoplugin.Hook{
@@ -103,16 +135,58 @@ func (p *PluginParallel) hooks() testoplugin.Hooks {
 					return
 				}
 
-				p.rawParallel()
+				p.parallel()
 			},
 		},
 	}
 }
 
-func (p *PluginParallel) rawParallel() {
+func (p *PluginParallel) parallelizeSuite() {
+	if p.sync {
+		return
+	}
+
+	if p.scope.has(Suites) {
+		p.parallel()
+	}
+
+	if !p.scope.has(Tests) {
+		return
+	}
+
+	t := p.root()
+
+	if _, ok := parallelTests.LoadOrStore(t, struct{}{}); ok {
+		return
+	}
+
+	t.Cleanup(func() { parallelTests.Delete(t) })
+
+	defer swallowRepeatedParallel()
+
+	t.Parallel()
+}
+
+func (p *PluginParallel) parallel() {
 	p.Helper()
 
-	testo.Reflect(p).TestingT.Parallel()
+	p.allowParallel = true
+	defer func() { p.allowParallel = false }()
+
+	defer swallowRepeatedParallel()
+
+	p.Parallel()
+}
+
+func swallowRepeatedParallel() {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	if fmt.Sprint(r) != "testing: t.Parallel called multiple times" {
+		panic(r)
+	}
 }
 
 func (p *PluginParallel) root() testoreflect.TestingT {

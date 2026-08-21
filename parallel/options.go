@@ -32,6 +32,10 @@ func WithScope(scope Scope) testoplugin.Option {
 }
 
 // WithSync signals that this test is to be run in sync with (and only with) other sync tests.
+//
+// A sub-suite started inside a sync test decides parallelism on its own:
+// options do not propagate through [testo.RunSubSuite], so with [Tests] in
+// scope it can still mark the enclosing native test as parallel.
 func WithSync() testoplugin.Option {
 	return testoplugin.Option{
 		Value: option(func(p *PluginParallel) {
