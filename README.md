@@ -12,5 +12,6 @@ A collection of small, miscellaneous plugins for [Testo framework](https://githu
 - [XFail](./xfail) - adds `t.XFail()` method to mark a test as "expected to fail".
 - [Parallel](./parallel) - marks all tests as parallel by default.
 - [Async](./async) - provides a test‑aware `sync.WaitGroup`.
+- [Beatify](./beatify) - colored per-test status lines and a suite summary with pass-rate coverage.
 
 See also [Allure plugin for Testo](https://github.com/ozontech/testo-allure) - visualize results of a test run with [Allure Report](https://allurereport.org/).
