@@ -1,4 +1,3 @@
-// Package parallel provides plugin to mark tests as parallel by default.
 package parallel
 
 import (
@@ -19,6 +18,9 @@ type PluginParallel struct {
 	sync  bool
 	scope Scope
 
+	beforeEachPriority testoplugin.Priority
+	beforeAllPriority  testoplugin.Priority
+
 	// allowParallel lifts the Overrides.Parallel gate while the plugin
 	// itself is calling T.Parallel.
 	allowParallel bool
@@ -33,6 +35,8 @@ func (p *PluginParallel) Plugin(
 ) testoplugin.Spec {
 	p.sync = *flagSync
 	p.scope = SuiteTests
+	p.beforeEachPriority = 0
+	p.beforeAllPriority = 0
 
 	for _, opt := range options {
 		if o, ok := opt.Value.(option); ok {
@@ -117,6 +121,7 @@ func (p *PluginParallel) plan() testoplugin.Plan {
 func (p *PluginParallel) hooks() testoplugin.Hooks {
 	return testoplugin.Hooks{
 		BeforeAll: testoplugin.Hook{
+			Priority: p.beforeAllPriority,
 			Func: func() {
 				if testo.Reflect(p).Suite.Name == "" {
 					return
@@ -126,6 +131,7 @@ func (p *PluginParallel) hooks() testoplugin.Hooks {
 			},
 		},
 		BeforeEach: testoplugin.Hook{
+			Priority: p.beforeEachPriority,
 			Func: func() {
 				if p.sync {
 					return
